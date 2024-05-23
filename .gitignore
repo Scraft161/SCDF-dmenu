@@ -1,0 +1,5 @@
+pkg/
+src/
+dmenu-*.tar.gz
+*.log
+*.pkg.tar.zst
