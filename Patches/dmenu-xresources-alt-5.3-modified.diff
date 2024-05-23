@@ -1,0 +1,168 @@
+diff -uN src/dmenu-5.3-orig/config.def.h src/dmenu-5.3/config.def.h
+--- src/dmenu-5.3-orig/config.def.h	2024-05-23 17:08:37.312186696 +0200
++++ src/dmenu-5.3/config.def.h	2024-05-23 17:15:23.429980180 +0200
+@@ -5,14 +5,22 @@
+ /* -fn option overrides fonts[0]; default X11 font or font set */
+ static const int user_bh = 0;               /* add an defined amount of pixels to the bar height */
+ 
++static char font[] = "monospace:size=10";
+ static const char *fonts[] = {
++	font,
+ 	"monospace:size=10"
+ };
+-static const char *prompt      = NULL;      /* -p  option; prompt to the left of input field */
+-static const char *colors[SchemeLast][2] = {
++
++static char *prompt      = NULL;      /* -p  option; prompt to the left of input field */
++
++static char normfgcolor[] = "#bbbbbb";
++static char normbgcolor[] = "#222222";
++static char selfgcolor[]  = "#eeeeee";
++static char selbgcolor[]  = "#005577";
++static char *colors[SchemeLast][2] = {
+ 	/*     fg         bg       */
+-	[SchemeNorm] = { "#bbbbbb", "#222222" },
+-	[SchemeSel] = { "#eeeeee", "#005577" },
++	[SchemeNorm] = { normfgcolor, normbgcolor },
++	[SchemeSel] = { selfgcolor, selbgcolor },
+ 	[SchemeOut] = { "#000000", "#00ffff" },
+ };
+ /* -l option; if nonzero, dmenu uses vertical list with given number of lines */
+@@ -23,3 +31,15 @@
+  * for example: " /?\"&[]"
+  */
+ static const char worddelimiters[] = " ";
++
++/*
++ * Xresources preferences to load at startup
++ */
++ResourcePref resources[] = {
++	{ "font",        STRING, &font },
++	{ "normfgcolor", STRING, &normfgcolor },
++	{ "normbgcolor", STRING, &normbgcolor },
++	{ "selfgcolor",  STRING, &selfgcolor },
++	{ "selbgcolor",  STRING, &selbgcolor },
++	{ "prompt",      STRING, &prompt },
++};
+diff -uN src/dmenu-5.3-orig/dmenu.c src/dmenu-5.3/dmenu.c
+--- src/dmenu-5.3-orig/dmenu.c	2024-05-23 17:08:37.312186696 +0200
++++ src/dmenu-5.3/dmenu.c	2024-05-23 17:08:46.352216913 +0200
+@@ -11,6 +11,7 @@
+ #include <X11/Xlib.h>
+ #include <X11/Xatom.h>
+ #include <X11/Xutil.h>
++#include <X11/Xresource.h>
+ #ifdef XINERAMA
+ #include <X11/extensions/Xinerama.h>
+ #endif
+@@ -52,6 +53,21 @@
+ static Drw *drw;
+ static Clr *scheme[SchemeLast];
+ 
++/* Xresources preferences */
++enum resource_type {
++	STRING = 0,
++	INTEGER = 1,
++	FLOAT = 2
++};
++typedef struct {
++	char *name;
++	enum resource_type type;
++	void *dst;
++} ResourcePref;
++
++static void load_xresources(void);
++static void resource_load(XrmDatabase db, char *name, enum resource_type rtype, void *dst);
++
+ #include "config.h"
+ 
+ static int (*fstrncmp)(const char *, const char *, size_t) = strncmp;
+@@ -572,6 +588,54 @@
+ 	lines = MIN(lines, i);
+ }
+ 
++void
++resource_load(XrmDatabase db, char *name, enum resource_type rtype, void *dst)
++{
++	char *sdst = NULL;
++	int *idst = NULL;
++	float *fdst = NULL;
++	sdst = dst;
++	idst = dst;
++	fdst = dst;
++	char fullname[256];
++	char *type;
++	XrmValue ret;
++	snprintf(fullname, sizeof(fullname), "%s.%s", "dmenu", name);
++	fullname[sizeof(fullname) - 1] = '\0';
++	XrmGetResource(db, fullname, "*", &type, &ret);
++	if (!(ret.addr == NULL || strncmp("String", type, 64)))
++	{
++		switch (rtype) {
++		case STRING:
++			strcpy(sdst, ret.addr);
++			break;
++		case INTEGER:
++			*idst = strtoul(ret.addr, NULL, 10);
++			break;
++		case FLOAT:
++			*fdst = strtof(ret.addr, NULL);
++			break;
++		}
++	}
++}
++
++void
++load_xresources(void)
++{
++	Display *display;
++	char *resm;
++	XrmDatabase db;
++	ResourcePref *p;
++	display = XOpenDisplay(NULL);
++	resm = XResourceManagerString(display);
++	if (!resm)
++		return;
++	db = XrmGetStringDatabase(resm);
++	for (p = resources; p < resources + LENGTH(resources); p++)
++		resource_load(db, p->name, p->type, p->dst);
++	XCloseDisplay(display);
++}
++
+ static void
+ run(void)
+ {
+@@ -726,6 +790,9 @@
+ 	XWindowAttributes wa;
+ 	int i, fast = 0;
+ 
++	XrmInitialize();
++	load_xresources();
++	
+ 	for (i = 1; i < argc; i++)
+ 		/* these options take no arguments */
+ 		if (!strcmp(argv[i], "-v")) {      /* prints version information */
+diff -uN src/dmenu-5.3-orig/drw.c src/dmenu-5.3/drw.c
+--- src/dmenu-5.3-orig/drw.c	2024-05-23 17:08:37.312186696 +0200
++++ src/dmenu-5.3/drw.c	2024-05-23 17:08:46.352216913 +0200
+@@ -195,7 +195,7 @@
+ /* Wrapper to create color schemes. The caller has to call free(3) on the
+  * returned color scheme when done using it. */
+ Clr *
+-drw_scm_create(Drw *drw, const char *clrnames[], size_t clrcount)
++drw_scm_create(Drw *drw, char *clrnames[], size_t clrcount)
+ {
+ 	size_t i;
+ 	Clr *ret;
+diff -uN src/dmenu-5.3-orig/drw.h src/dmenu-5.3/drw.h
+--- src/dmenu-5.3-orig/drw.h	2024-05-23 17:08:37.312186696 +0200
++++ src/dmenu-5.3/drw.h	2024-05-23 17:08:46.352216913 +0200
+@@ -40,7 +40,7 @@
+ 
+ /* Colorscheme abstraction */
+ void drw_clr_create(Drw *drw, Clr *dest, const char *clrname);
+-Clr *drw_scm_create(Drw *drw, const char *clrnames[], size_t clrcount);
++Clr *drw_scm_create(Drw *drw, char *clrnames[], size_t clrcount);
+ 
+ /* Cursor abstraction */
+ Cur *drw_cur_create(Drw *drw, int shape);

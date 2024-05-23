@@ -1,0 +1,16 @@
+#!/bin/sh
+
+dmenuver="5.3"
+
+mkdir -p "src"
+
+rm -rf "src/dmenu-${dmenuver}" 1> /dev/null
+
+if ! [ -f "src/dmenu-${dmenuver}.tar.gz" ]; then
+	wget -O "src/dmenu-${dmenuver}.tar.gz" "https://dl.suckless.org/tools/dmenu-${dmenuver}.tar.gz"
+	if [ "$?" -ne 0 ]; then exit 1; fi
+fi
+
+tar -xzf "src/dmenu-${dmenuver}.tar.gz" -C "src"
+
+printf '%s\n' "Done, dmenu is downloaded and extracted!\nYou can now run \`patch.sh\` to apply the SCDF patches."
