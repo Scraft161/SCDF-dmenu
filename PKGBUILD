@@ -21,7 +21,7 @@ sha256sums=(
 prepare() {
 	echo "Patching dmenu"
 	cd "$srcdir/.."
-	#./patch.sh
+	./patch.sh
 }
 
 build() {
